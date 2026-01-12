@@ -44,7 +44,7 @@ state_lookup :: proc(s: State, pos: [3]int) -> Color {
     index := pos_2_index(pos, s.dim)
 
     if ba.get(&s.bit_array, index) {
-        object := &s.objects[s.object_refs[index]]
+        object := s.objects[s.object_refs[index]]
         return object_lookup(object, pos)
     }
 
@@ -74,10 +74,24 @@ object_create :: proc(s: ^State, pos: [3]int, dimensions: [3]int) -> Object_ID {
 }
 object_init_cube :: proc(s: ^State, id: Object_ID, color: Color) {
     o := &s.objects[id]
+
     for x in 0..<o.dim.x {
         for y in 0..<o.dim.y {
             for z in 0..<o.dim.z {
                 object_add_pixel(s, id, {x,y,z}, color)
+            }
+        }
+    }
+}
+object_init_cube_hollow :: proc(s: ^State, id: Object_ID, Color: Color) {
+    o := &s.objects[id]
+    
+    object_init_cube(s, id, Color)
+
+    for x in 1..<o.dim.x-1 {
+        for y in 1..<o.dim.y-1 {
+            for z in 1..<o.dim.z-1 {
+                object_remove_pixel(s, id, {x,y,z})
             }
         }
     }
@@ -94,7 +108,18 @@ object_add_pixel :: proc(s: ^State, id: Object_ID, pos: [3]int, color: Color) {
     ba.set(&s.bit_array, world_index)
     s.object_refs[world_index] = id
 }
-object_lookup :: proc(o: ^Object, pos: [3]int) -> Color {
+object_remove_pixel :: proc(s: ^State, id: Object_ID, pos: [3]int) {
+    o := &s.objects[id]
+
+    object_index := pos_2_index(pos, o.dim)
+    ba.set(&o.bit_array, object_index, false)
+
+    world_pos := pos + o.pos
+    world_index := pos_2_index(world_pos, s.dim)
+    ba.set(&s.bit_array, world_index, false)
+}
+object_lookup :: proc(o: Object, pos: [3]int) -> Color {
+    o   := o
     pos := pos
     
     pos = pos - o.pos
@@ -111,7 +136,7 @@ render_frame :: proc(s: State, canvas: []Color) {
     px_size := 100
     for x in 0..<WIDTH/px_size {
         for y in 0..<HEIGHT/px_size {
-            color := state_lookup(s, {7+x, 7+y, 7})
+            color := state_lookup(s, {7+x, 7+y, 8})
             rl.DrawRectangle(i32(x*px_size), i32(y*px_size), i32(px_size), i32(px_size), color)
         }
     }
@@ -129,7 +154,7 @@ main :: proc() {
 
     state := state_create(16)
     cube := object_create(&state, 7, 3)
-    object_init_cube(&state, cube, rl.GetColor(0x9AA628ff))
+    object_init_cube_hollow(&state, cube, rl.GetColor(0x9AA628ff))
 
     for !rl.WindowShouldClose() {
         rl.BeginDrawing()
