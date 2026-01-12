@@ -13,12 +13,44 @@ dbg :: proc(value: any, expr := #caller_expression(value)) {
     log.debug(expr, "=", value)
 }
 
+pos_2_index :: proc(pos, dim: [3]int) -> int {
+    return pos.x + pos.y*dim.x + pos.z*dim.x*dim.z
+}
+
 State :: struct {
     dim: [3]int,
     bit_array: ba.Bit_Array,
     object_refs: []Object_ID,
-    objects: [dynamic]Object
+    objects: [dynamic]Object,
 }
+state_create :: proc(dimensions: [3]int, allocator := context.allocator) -> State {
+    context.allocator = allocator
+
+    size := dimensions.x * dimensions.y * dimensions.z
+
+    bit_array := ba.Bit_Array{}
+    ba.init(&bit_array, size)
+
+    return {
+        dim = dimensions,
+        bit_array = bit_array,
+        object_refs = make([]Object_ID, size),
+        objects = make([dynamic]Object),
+    }
+}
+state_lookup :: proc(s: State, pos: [3]int) -> Color {
+    s := s
+
+    index := pos_2_index(pos, s.dim)
+
+    if ba.get(&s.bit_array, index) {
+        object := &s.objects[s.object_refs[index]]
+        return object_lookup(object, pos)
+    }
+
+    return {}
+}
+
 Object :: struct {
     pos: [3]int,
     dim: [3]int,
@@ -39,9 +71,6 @@ object_create :: proc(s: ^State, pos: [3]int, dimensions: [3]int) -> Object_ID {
     })
 
     return Object_ID(len(s.objects) - 1)
-}
-pos_2_index :: proc(pos, dim: [3]int) -> int {
-    return pos.x + pos.y*dim.x + pos.z*dim.x*dim.z
 }
 object_init_cube :: proc(s: ^State, id: Object_ID, color: Color) {
     o := &s.objects[id]
@@ -78,41 +107,18 @@ object_lookup :: proc(o: ^Object, pos: [3]int) -> Color {
     return {}
 }
 
-state_create :: proc(dimensions: [3]int, allocator := context.allocator) -> State {
-    context.allocator = allocator
-
-    size := dimensions.x * dimensions.y * dimensions.z
-
-    bit_array := ba.Bit_Array{}
-    ba.init(&bit_array, size)
-
-    return {
-        dim = dimensions,
-        bit_array = bit_array,
-        object_refs = make([]Object_ID, size),
-        objects = make([dynamic]Object),
+render_frame :: proc(s: State, canvas: []Color) {
+    px_size := 100
+    for x in 0..<WIDTH/px_size {
+        for y in 0..<HEIGHT/px_size {
+            color := state_lookup(s, {7+x, 7+y, 7})
+            rl.DrawRectangle(i32(x*px_size), i32(y*px_size), i32(px_size), i32(px_size), color)
+        }
     }
-}
-state_lookup :: proc(s: State, pos: [3]int) -> Color {
-    s := s
-
-    index := pos_2_index(pos, s.dim)
-
-    if ba.get(&s.bit_array, index) {
-        object := &s.objects[s.object_refs[index]]
-        return object_lookup(object, pos)
-    }
-
-    return {}
 }
 
 main :: proc() {
-    context.logger = log.create_console_logger(opt=log.Options{
-        .Level,
-        .Terminal_Color,
-        .Short_File_Path,
-        .Line,
-    })
+    context.logger = log.create_console_logger()
     defer log.destroy_console_logger(context.logger)
 
     rl.SetConfigFlags({ .VSYNC_HINT })
@@ -127,22 +133,13 @@ main :: proc() {
 
     for !rl.WindowShouldClose() {
         rl.BeginDrawing()
-        {
-            rl.ClearBackground(rl.VIOLET)
-            rl.UpdateTexture(texture, raw_data(canvas))
-            rl.DrawTexture(texture, 0, 0, rl.WHITE)
-            render_frame(state, canvas)
-        }
-        rl.EndDrawing()
-    }
-}
 
-render_frame :: proc(s: State, canvas: []Color) {
-    px_size := 100
-    for x in 0..<WIDTH/px_size {
-        for y in 0..<HEIGHT/px_size {
-            color := state_lookup(s, {7+x, 7+y, 7})
-            rl.DrawRectangle(i32(x*px_size), i32(y*px_size), i32(px_size), i32(px_size), color)
-        }
+        rl.ClearBackground(rl.VIOLET)
+        rl.UpdateTexture(texture, raw_data(canvas))
+        rl.DrawTexture(texture, 0, 0, rl.WHITE)
+
+        render_frame(state, canvas)
+        
+        rl.EndDrawing()
     }
 }
